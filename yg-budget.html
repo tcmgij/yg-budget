@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>Y&amp;G Budget</title>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Y&amp;G Budget"/>
+<meta name="theme-color" content="#0D0C0A"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Lato:wght@300;400;700&display=swap"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0D0C0A}
+body{font-family:'Lato',sans-serif;font-weight:300;color:#EDE0CC;-webkit-font-smoothing:antialiased}
+input,select,button{font-family:inherit;font-size:16px}
+::-webkit-scrollbar{width:0}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+'use strict';
+const {useState,useEffect,useMemo,useRef,useCallback} = React;
+const ce = React.createElement;
+
+// ── Storage ──────────────────────────────────────────────────────────────────
+function lsLoad(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch{return null}}
+function lsSave(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const CC=['#C9A84C','#E8C97A','#A07830','#D4B896','#8B7355','#F0DDB0','#6B5B3E','#EDD898','#B8975A','#785A2A'];
+const DEF=['Housing','Groceries','Dining Out','Transport','Entertainment','Health','Subscriptions','Shopping','Travel','Other'];
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const NOW=new Date();
+const CMK=NOW.getFullYear()+'-'+String(NOW.getMonth()+1).padStart(2,'0');
+
+function gid(){return Math.random().toString(36).slice(2,9)+Date.now().toString(36)}
+function eur(n){return'\u20ac'+Number(n).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function eurShort(n){return'\u20ac'+(n>=1000?(n/1000).toFixed(1)+'k':Math.round(n))}
+function mlabel(k){if(!k)return'';const[y,m]=k.split('-');return MON[parseInt(m,10)-1]+' '+y}
+
+// ── Design ───────────────────────────────────────────────────────────────────
+const BG='#0D0C0A',CARD='#141210',BDR='#252219',GOLD='#C9A84C',GDIM='#8A6E2E';
+const TXT='#EDE0CC',MUT='#7A6E5E',FAINT='#3A342A',RED='#D46060',GRN='#6AB07A';
+const DP={fontFamily:"'Playfair Display',serif",fontWeight:500};
+const INP={width:'100%',background:'#1A1713',border:'1px solid '+BDR,borderRadius:10,
+  color:TXT,padding:'11px 14px',outline:'none',boxSizing:'border-box',
+  WebkitAppearance:'none',appearance:'none',fontSize:16,fontFamily:"'Lato',sans-serif"};
+const LBL={fontSize:10,color:MUT,textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:5,display:'block'};
+
+// ── UI Primitives ─────────────────────────────────────────────────────────────
+function Btn({children,onClick,variant,style,disabled}){
+  const v=variant||'primary';
+  const vs={primary:{background:GOLD,color:BG,border:'none'},
+    ghost:{background:'transparent',color:MUT,border:'1px solid '+BDR},
+    danger:{background:'transparent',color:RED,border:'1px solid '+RED+'44'},
+    success:{background:'transparent',color:GRN,border:'1px solid '+GRN+'44'}};
+  return ce('button',{onClick:disabled?undefined:onClick,style:{
+    padding:'10px 16px',borderRadius:10,cursor:disabled?'default':'pointer',
+    fontSize:14,fontWeight:700,letterSpacing:'0.02em',fontFamily:"'Lato',sans-serif",
+    opacity:disabled?0.4:1,...vs[v],...(style||{})}},children);
+}
+function Card({children,style}){
+  return ce('div',{style:{background:CARD,border:'1px solid '+BDR,borderRadius:14,padding:'1rem',...(style||{})}},children);
+}
+function Tag({label,color}){
+  return ce('span',{style:{display:'inline-block',padding:'2px 8px',borderRadius:20,fontSize:10,
+    background:color+'22',color:color,border:'1px solid '+color+'44'}},label);
+}
+
+// ── SVG Charts ────────────────────────────────────────────────────────────────
+
+// Donut chart
+function DonutChart({data,size}){
+  const s=size||180,cx=s/2,cy=s/2,r=s*0.38,inner=s*0.22;
+  const total=data.reduce((a,d)=>a+d.value,0);
+  if(total===0)return null;
+  let angle=-Math.PI/2;
+  const slices=data.map(d=>{
+    const sweep=(d.value/total)*2*Math.PI;
+    const x1=cx+r*Math.cos(angle),y1=cy+r*Math.sin(angle);
+    angle+=sweep;
+    const x2=cx+r*Math.cos(angle),y2=cy+r*Math.sin(angle);
+    const ix1=cx+inner*Math.cos(angle-sweep),iy1=cy+inner*Math.sin(angle-sweep);
+    const ix2=cx+inner*Math.cos(angle),iy2=cy+inner*Math.sin(angle);
+    const large=sweep>Math.PI?1:0;
+    const path=`M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${inner} ${inner} 0 ${large} 0 ${ix1} ${iy1} Z`;
+    return{path,color:d.color,value:d.value,name:d.name};
+  });
+  return ce('svg',{width:s,height:s,viewBox:`0 0 ${s} ${s}`,style:{display:'block',margin:'0 auto'}},
+    slices.map((sl,i)=>ce('path',{key:i,d:sl.path,fill:sl.color,stroke:CARD,strokeWidth:1.5})));
+}
+
+// Line chart
+function LineChart({data,width,height}){
+  const w=width||320,h=height||140,pad={l:38,r:8,t:10,b:24};
+  const iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
+  const vals=data.map(d=>d.total);
+  const maxV=Math.max(...vals,1);
+  const points=data.map((d,i)=>{
+    const x=pad.l+(i/(data.length-1||1))*iw;
+    const y=pad.t+ih-(d.total/maxV)*ih;
+    return{x,y,label:d.month,value:d.total};
+  });
+  const polyline=points.map(p=>`${p.x},${p.y}`).join(' ');
+  // y-axis ticks
+  const ticks=3;
+  return ce('svg',{width:'100%',viewBox:`0 0 ${w} ${h}`,style:{display:'block'}},
+    // grid lines
+    Array.from({length:ticks+1},(_,i)=>{
+      const y=pad.t+(i/ticks)*ih;
+      const val=maxV*(1-i/ticks);
+      return ce('g',{key:i},
+        ce('line',{x1:pad.l,y1:y,x2:w-pad.r,y2:y,stroke:BDR,strokeDasharray:'3 3'}),
+        ce('text',{x:pad.l-4,y:y+4,textAnchor:'end',fontSize:9,fill:MUT},eurShort(val)));
+    }),
+    // x labels
+    points.map((p,i)=>ce('text',{key:'x'+i,x:p.x,y:h-6,textAnchor:'middle',fontSize:9,fill:MUT},p.label)),
+    // line
+    ce('polyline',{points:polyline,fill:'none',stroke:GOLD,strokeWidth:2,strokeLinejoin:'round'}),
+    // dots
+    points.map((p,i)=>ce('circle',{key:'d'+i,cx:p.x,cy:p.y,r:3.5,fill:GOLD})));
+}
+
+// Bar chart
+function BarChart({data,cats,width,height}){
+  const w=width||320,h=height||160,pad={l:40,r:8,t:10,b:36};
+  const iw=w-pad.l-pad.r,ih=h-pad.t-pad.b;
+  if(!data.length||!cats.length)return null;
+  const allVals=data.flatMap(d=>cats.map(c=>d[c]||0));
+  const maxV=Math.max(...allVals,1);
+  const groupW=iw/data.length;
+  const barW=Math.min(groupW/(cats.length+1),22);
+  const ticks=3;
+  return ce('svg',{width:'100%',viewBox:`0 0 ${w} ${h}`,style:{display:'block'}},
+    Array.from({length:ticks+1},(_,i)=>{
+      const y=pad.t+(i/ticks)*ih;
+      const val=maxV*(1-i/ticks);
+      return ce('g',{key:i},
+        ce('line',{x1:pad.l,y1:y,x2:w-pad.r,y2:y,stroke:BDR,strokeDasharray:'3 3'}),
+        ce('text',{x:pad.l-4,y:y+4,textAnchor:'end',fontSize:9,fill:MUT},eurShort(val)));
+    }),
+    data.map((d,gi)=>{
+      const gx=pad.l+gi*groupW+groupW/2;
+      return ce('g',{key:gi},
+        ce('text',{x:gx,y:h-6,textAnchor:'middle',fontSize:9,fill:MUT},d.month),
+        cats.map((c,ci)=>{
+          const val=d[c]||0;
+          const bh=(val/maxV)*ih;
+          const x=gx-(cats.length*barW/2)+ci*barW+ci*2;
+          return ce('rect',{key:c,x,y:pad.t+ih-bh,width:barW,height:bh,
+            fill:CC[ci%CC.length],rx:2});
+        }));
+    }),
+    // Legend
+    cats.map((c,i)=>ce('g',{key:'l'+i,transform:`translate(${pad.l+i*80},${h-4})`},
+      ce('rect',{x:0,y:-8,width:8,height:8,fill:CC[i%CC.length],rx:1}),
+      ce('text',{x:11,y:-1,fontSize:8,fill:MUT},c.length>9?c.slice(0,9)+'…':c))));
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+const TABS=[{id:'dashboard',icon:'◈',label:'Overview'},
+  {id:'add',icon:'+',label:'Add'},
+  {id:'expenses',icon:'≡',label:'Expenses'},
+  {id:'recurring',icon:'↻',label:'Recurring'},
+  {id:'settings',icon:'⚙',label:'Settings'}];
+
+// ── App ───────────────────────────────────────────────────────────────────────
+function App(){
+  const[tab,setTab]=useState('dashboard');
+  const[expenses,setExp]=useState(()=>lsLoad('yg_e')||[]);
+  const[recurring,setRec]=useState(()=>lsLoad('yg_r')||[]);
+  const[categories,setCat]=useState(()=>lsLoad('yg_c')||DEF);
+  const[toast,setToast]=useState(null);
+
+  useEffect(()=>{lsSave('yg_e',expenses)},[expenses]);
+  useEffect(()=>{lsSave('yg_r',recurring)},[recurring]);
+  useEffect(()=>{lsSave('yg_c',categories)},[categories]);
+
+  function showToast(msg,type){setToast({msg,type:type||'ok'});setTimeout(()=>setToast(null),2800)}
+
+  return ce('div',{style:{minHeight:'100vh',background:BG,color:TXT,paddingBottom:88,maxWidth:430,margin:'0 auto'}},
+    // Header
+    ce('div',{style:{padding:'16px 16px 10px',borderBottom:'1px solid '+BDR,position:'sticky',top:0,background:BG,zIndex:50}},
+      ce('div',{style:{...DP,fontSize:19,color:GOLD}},'Y&G Budget'),
+      ce('div',{style:{fontSize:9,color:MUT,letterSpacing:'0.15em',textTransform:'uppercase',marginTop:1}},'Household Tracker')),
+    // Content
+    ce('div',{style:{padding:'14px 14px 0'}},
+      tab==='dashboard' && ce(Dashboard,{expenses,categories}),
+      tab==='add'       && ce(AddExp,{setExpenses:setExp,categories,onDone:()=>{showToast('Expense added \u2713');setTab('expenses')}}),
+      tab==='expenses'  && ce(ExpList,{expenses,setExpenses:setExp,categories}),
+      tab==='recurring' && ce(RecPage,{recurring,setRecurring:setRec,categories,expenses,setExpenses:setExp,showToast}),
+      tab==='settings'  && ce(SettPage,{expenses,recurring,categories,setExpenses:setExp,setRecurring:setRec,setCategories:setCat,showToast})),
+    // Toast
+    toast&&ce('div',{style:{position:'fixed',bottom:96,left:'50%',transform:'translateX(-50%)',
+      background:toast.type==='ok'?'#1a2a1a':'#2a1a1a',
+      border:'1px solid '+(toast.type==='ok'?GRN:RED)+'66',
+      borderRadius:10,padding:'8px 16px',fontSize:13,color:toast.type==='ok'?GRN:RED,
+      zIndex:200,whiteSpace:'nowrap'}},toast.msg),
+    // Tab bar
+    ce('div',{style:{position:'fixed',bottom:0,left:'50%',transform:'translateX(-50%)',
+      width:'100%',maxWidth:430,background:CARD,borderTop:'1px solid '+BDR,
+      display:'flex',zIndex:100,paddingBottom:'env(safe-area-inset-bottom)'}},
+      TABS.map(t=>ce('button',{key:t.id,onClick:()=>setTab(t.id),
+        style:{flex:1,padding:'9px 0 11px',background:'none',border:'none',cursor:'pointer',
+          display:'flex',flexDirection:'column',alignItems:'center',gap:3}},
+        ce('span',{style:{fontSize:t.id==='add'?20:15,color:tab===t.id?GOLD:FAINT,lineHeight:1}},t.icon),
+        ce('span',{style:{fontSize:8,color:tab===t.id?GOLD:MUT,letterSpacing:'0.06em',textTransform:'uppercase'}},t.label)))));
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+function Dashboard({expenses,categories}){
+  const[vm,setVm]=useState(CMK);
+  const mons=useMemo(()=>{const s=new Set(expenses.map(x=>x.month));s.add(CMK);return[...s].sort().reverse()},[expenses]);
+  const mexp=useMemo(()=>expenses.filter(x=>x.month===vm),[expenses,vm]);
+  const total=useMemo(()=>mexp.reduce((s,x)=>s+Number(x.amount),0),[mexp]);
+  const pk=useMemo(()=>{const[y,m]=vm.split('-').map(Number);const d=new Date(y,m-2,1);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')},[vm]);
+  const ptot=useMemo(()=>expenses.filter(x=>x.month===pk).reduce((s,x)=>s+Number(x.amount),0),[expenses,pk]);
+  const diff=total-ptot;
+  const cidx=useMemo(()=>{const m={};categories.forEach((c,i)=>{m[c]=i});return m},[categories]);
+  const catData=useMemo(()=>{
+    const m={};mexp.forEach(x=>{m[x.category]=(m[x.category]||0)+Number(x.amount)});
+    return Object.entries(m).map(([n,v])=>({name:n,value:v,color:CC[(cidx[n]??0)%CC.length]})).sort((a,b)=>b.value-a.value);
+  },[mexp,cidx]);
+  const trendData=useMemo(()=>{
+    const[y,m]=vm.split('-').map(Number);
+    return Array.from({length:6},(_,i)=>{const d=new Date(y,m-1-5+i,1);
+      const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      return{month:MON[d.getMonth()],total:expenses.filter(x=>x.month===k).reduce((s,x)=>s+Number(x.amount),0)}});
+  },[expenses,vm]);
+  const topCats=catData.slice(0,3).map(c=>c.name);
+  const barData=useMemo(()=>{
+    const[y,m]=vm.split('-').map(Number);
+    return[0,-1,-2].reverse().map(i=>{const d=new Date(y,m-1+i,1);
+      const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      const row={month:MON[d.getMonth()]};
+      expenses.filter(x=>x.month===k).forEach(x=>{if(topCats.includes(x.category))row[x.category]=(row[x.category]||0)+Number(x.amount)});
+      return row});
+  },[expenses,vm,topCats]);
+  const ann=useMemo(()=>{
+    const[y]=vm.split('-').map(Number);
+    const cy=NOW.getFullYear(),cm=NOW.getMonth()+1;
+    const lc=y<cy?12:y===cy?cm-1:0;
+    if(lc<=0)return null;
+    const ye=expenses.filter(x=>{const[ey,em]=x.month.split('-').map(Number);return ey===y&&em<=lc});
+    if(!ye.length)return null;
+    const ct={};ye.forEach(x=>{ct[x.category]=(ct[x.category]||0)+Number(x.amount)});
+    return{rows:Object.entries(ct).map(([c,t])=>({cat:c,total:t,avg:t/lc})).sort((a,b)=>b.avg-a.avg),lc,year:y};
+  },[expenses,vm]);
+
+  return ce('div',{style:{display:'flex',flexDirection:'column',gap:12}},
+    ce('select',{value:vm,onChange:x=>setVm(x.target.value),
+      style:{...INP,width:'auto',alignSelf:'flex-start',color:GOLD,background:'transparent',
+        border:'1px solid '+GDIM+'55',borderRadius:8,fontSize:14,paddingRight:28}},
+      mons.map(k=>ce('option',{key:k,value:k,style:{background:CARD}},mlabel(k)))),
+
+    ce(Card,null,
+      ce('div',{style:{fontSize:10,color:MUT,textTransform:'uppercase',letterSpacing:'0.1em'}},'Total Spent \u2014 '+mlabel(vm)),
+      ce('div',{style:{...DP,fontSize:36,color:TXT,margin:'4px 0 2px'}},eur(total)),
+      ce('div',{style:{fontSize:12,color:diff>0?RED:diff<0?GRN:MUT}},
+        diff===0||ptot===0?mexp.length+' transaction'+(mexp.length!==1?'s':'')
+          :(diff>0?'\u25b2':'\u25bc')+' '+eur(Math.abs(diff))+' vs '+mlabel(pk))),
+
+    catData.length>0&&ce(Card,null,
+      ce('div',{style:{...DP,fontSize:14,color:GOLD,marginBottom:10}},'By Category'),
+      ce(DonutChart,{data:catData,size:170}),
+      ce('div',{style:{display:'flex',flexWrap:'wrap',gap:'5px 12px',marginTop:10}},
+        catData.slice(0,6).map(c=>ce('div',{key:c.name,style:{display:'flex',alignItems:'center',gap:5,fontSize:11}},
+          ce('span',{style:{width:7,height:7,borderRadius:'50%',background:c.color,display:'inline-block',flexShrink:0}}),
+          ce('span',{style:{color:MUT}},c.name),
+          ce('span',{style:{color:TXT}},eur(c.value)))))),
+
+    ce(Card,null,
+      ce('div',{style:{...DP,fontSize:14,color:GOLD,marginBottom:8}},'6-Month Trend'),
+      ce(LineChart,{data:trendData})),
+
+    topCats.length>0&&ce(Card,null,
+      ce('div',{style:{...DP,fontSize:14,color:GOLD,marginBottom:8}},'3-Month Comparison'),
+      ce(BarChart,{data:barData,cats:topCats})),
+
+    ann?ce(Card,{style:{marginBottom:8}},
+      ce('div',{style:{...DP,fontSize:14,color:GOLD,marginBottom:2}},ann.year+' Annual Summary'),
+      ce('div',{style:{fontSize:11,color:MUT,marginBottom:12}},'Jan \u2013 '+MON[ann.lc-1]+' \u00b7 '+ann.lc+' closed month'+(ann.lc!==1?'s':'')+' \u00b7 ranked by monthly avg'),
+      ce('div',{style:{display:'grid',gridTemplateColumns:'1fr auto auto',gap:'6px 10px',marginBottom:8,paddingBottom:8,borderBottom:'1px solid '+BDR}},
+        ['Category','Total','/ Month'].map((h,i)=>ce('div',{key:h,style:{fontSize:10,color:FAINT,textTransform:'uppercase',textAlign:i>0?'right':'left'}},h))),
+      ann.rows.map((row,i)=>{
+        const col=CC[(cidx[row.cat]??i)%CC.length];
+        const pct=ann.rows[0].avg>0?(row.avg/ann.rows[0].avg)*100:0;
+        return ce('div',{key:row.cat,style:{paddingTop:8,paddingBottom:8,borderBottom:i<ann.rows.length-1?'1px solid '+BDR+'33':'none'}},
+          ce('div',{style:{display:'grid',gridTemplateColumns:'1fr auto auto',gap:'4px 10px',alignItems:'center'}},
+            ce('div',{style:{display:'flex',alignItems:'center',gap:6,minWidth:0}},
+              ce('span',{style:{width:7,height:7,borderRadius:'50%',background:col,flexShrink:0}}),
+              ce('span',{style:{fontSize:13,color:TXT,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},row.cat)),
+            ce('div',{style:{fontSize:12,color:MUT,textAlign:'right',whiteSpace:'nowrap'}},eur(row.total)),
+            ce('div',{style:{...DP,fontSize:13,color:GOLD,textAlign:'right',whiteSpace:'nowrap'}},eur(row.avg))),
+          ce('div',{style:{marginTop:5,height:3,background:FAINT,borderRadius:4,overflow:'hidden'}},
+            ce('div',{style:{height:'100%',width:pct+'%',background:col,borderRadius:4}})));
+      }),
+      ce('div',{style:{marginTop:12,paddingTop:10,borderTop:'1px solid '+BDR,display:'grid',gridTemplateColumns:'1fr auto auto',gap:'4px 10px'}},
+        ce('div',{style:{fontSize:12,color:MUT,fontWeight:700}},'Total'),
+        ce('div',{style:{fontSize:13,color:TXT,textAlign:'right',fontWeight:700}},eur(ann.rows.reduce((s,r)=>s+r.total,0))),
+        ce('div',{style:{...DP,fontSize:13,color:GOLD,textAlign:'right'}},eur(ann.rows.reduce((s,r)=>s+r.total,0)/ann.lc))))
+    :ce(Card,{style:{marginBottom:8}},
+      ce('div',{style:{...DP,fontSize:14,color:GOLD,marginBottom:4}},vm.split('-')[0]+' Annual Summary'),
+      ce('div',{style:{fontSize:12,color:MUT,lineHeight:1.6}},'No closed months yet. Data will appear once the first full month has passed.')));
+}
+
+// ── Add / Edit Expense ────────────────────────────────────────────────────────
+function AddExp({setExpenses,categories,onDone,prefill,onClose}){
+  const[f,sf]=useState({
+    description:prefill?.description||'',amount:prefill?.amount?String(prefill.amount):'',
+    category:prefill?.category||categories[0]||'',
+    date:prefill?.date||NOW.toISOString().slice(0,10),
+    notes:prefill?.notes||'',tags:prefill?.tags?.join(', ')||''});
+  const s=(k,v)=>sf(x=>({...x,[k]:v}));
+  function submit(){
+    if(!f.description.trim()||!f.amount||isNaN(Number(f.amount)))return;
+    const exp={id:prefill?.id||gid(),description:f.description.trim(),amount:parseFloat(f.amount),
+      category:f.category,date:f.date,notes:f.notes.trim(),
+      tags:f.tags.split(',').map(t=>t.trim()).filter(Boolean),month:f.date.slice(0,7)};
+    if(prefill)setExpenses(x=>x.map(y=>y.id===exp.id?exp:y));
+    else setExpenses(x=>[exp,...x]);
+    if(onClose)onClose();else onDone();
+  }
+  return ce('div',{style:{display:'flex',flexDirection:'column',gap:12,paddingBottom:8}},
+    !onClose&&ce('div',{style:{...DP,fontSize:20,color:TXT,marginBottom:2}},'New Expense'),
+    ce('div',null,ce('label',{style:LBL},'Description'),
+      ce('input',{style:INP,placeholder:'e.g. Weekly groceries',value:f.description,onChange:x=>s('description',x.target.value)})),
+    ce('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+      ce('div',null,ce('label',{style:LBL},'Amount (\u20ac)'),
+        ce('input',{style:INP,type:'number',inputMode:'decimal',placeholder:'0.00',value:f.amount,onChange:x=>s('amount',x.target.value)})),
+      ce('div',null,ce('label',{style:LBL},'Date'),
+        ce('input',{style:INP,type:'date',value:f.date,onChange:x=>s('date',x.target.value)}))),
+    ce('div',null,ce('label',{style:LBL},'Category'),
+      ce('select',{style:INP,value:f.category,onChange:x=>s('category',x.target.value)},
+        categories.map(c=>ce('option',{key:c,style:{background:CARD}},c)))),
+    ce('div',null,ce('label',{style:LBL},'Notes (optional)'),
+      ce('input',{style:INP,placeholder:'Any extra details\u2026',value:f.notes,onChange:x=>s('notes',x.target.value)})),
+    ce('div',null,ce('label',{style:LBL},'Tags (comma-separated)'),
+      ce('input',{style:INP,placeholder:'e.g. joint, work',value:f.tags,onChange:x=>s('tags',x.target.value)})),
+    ce('div',{style:{display:'flex',gap:8,justifyContent:'flex-end',paddingTop:4}},
+      onClose&&ce(Btn,{variant:'ghost',onClick:onClose},'Cancel'),
+      ce(Btn,{onClick:submit},prefill?'Save Changes':'Add Expense')));
+}
+
+// ── Expense List ──────────────────────────────────────────────────────────────
+function ExpList({expenses,setExpenses,categories}){
+  const[fm,setFm]=useState(CMK);const[fc,setFc]=useState('All');
+  const[q,setQ]=useState('');const[ed,setEd]=useState(null);
+  const mons=useMemo(()=>{const s=new Set(expenses.map(x=>x.month));s.add(CMK);return[...s].sort().reverse()},[expenses]);
+  const cidx=useMemo(()=>{const m={};categories.forEach((c,i)=>{m[c]=i});return m},[categories]);
+  const fil=useMemo(()=>expenses.filter(x=>
+    (!fm||x.month===fm)&&(fc==='All'||x.category===fc)&&
+    (!q||x.description.toLowerCase().includes(q.toLowerCase())||
+      x.notes?.toLowerCase().includes(q.toLowerCase())||
+      x.tags?.some(t=>t.toLowerCase().includes(q.toLowerCase())))
+  ).sort((a,b)=>b.date.localeCompare(a.date)),[expenses,fm,fc,q]);
+  const ftot=useMemo(()=>fil.reduce((s,x)=>s+Number(x.amount),0),[fil]);
+  const eexp=ed?expenses.find(x=>x.id===ed):null;
+  if(ed&&eexp)return ce('div',null,
+    ce('div',{style:{...DP,fontSize:20,color:TXT,marginBottom:12}},'Edit Expense'),
+    ce(AddExp,{setExpenses,categories,prefill:eexp,onClose:()=>setEd(null)}));
+  return ce('div',{style:{display:'flex',flexDirection:'column',gap:10}},
+    ce('div',{style:{...DP,fontSize:20,color:TXT}},'Expenses'),
+    ce('input',{style:INP,placeholder:'Search\u2026',value:q,onChange:x=>setQ(x.target.value)}),
+    ce('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
+      ce('select',{style:INP,value:fm,onChange:x=>setFm(x.target.value)},
+        ce('option',{value:''},'All Months'),
+        mons.map(k=>ce('option',{key:k,value:k,style:{background:CARD}},mlabel(k)))),
+      ce('select',{style:INP,value:fc,onChange:x=>setFc(x.target.value)},
+        ce('option',{value:'All'},'All'),
+        categories.map(c=>ce('option',{key:c,style:{background:CARD}},c)))),
+    fil.length>0&&ce('div',{style:{fontSize:11,color:MUT,textAlign:'right'}},fil.length+' entries \u00b7 '+eur(ftot)),
+    fil.length===0?ce(Card,{style:{textAlign:'center',color:MUT,padding:'2.5rem 1rem'}},'No expenses found')
+      :fil.map(x=>{
+        const col=CC[(cidx[x.category]??0)%CC.length];
+        return ce(Card,{key:x.id,style:{padding:'0.85rem'}},
+          ce('div',{style:{display:'flex',gap:9,alignItems:'flex-start'}},
+            ce('div',{style:{width:3,alignSelf:'stretch',background:col,borderRadius:4,flexShrink:0,marginTop:2}}),
+            ce('div',{style:{flex:1,minWidth:0}},
+              ce('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:6}},
+                ce('span',{style:{fontWeight:700,fontSize:14,color:TXT,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},x.description),
+                ce('span',{style:{...DP,fontSize:16,color:GOLD,flexShrink:0}},eur(x.amount))),
+              ce('div',{style:{display:'flex',flexWrap:'wrap',gap:4,marginTop:5}},
+                ce(Tag,{label:x.category,color:col}),
+                (x.tags||[]).map(t=>ce(Tag,{key:t,label:t,color:MUT}))),
+              x.notes&&ce('div',{style:{fontSize:11,color:MUT,marginTop:4}},x.notes),
+              ce('div',{style:{fontSize:10,color:FAINT,marginTop:4}},x.date),
+              ce('div',{style:{display:'flex',gap:6,marginTop:8}},
+                ce(Btn,{variant:'ghost',style:{padding:'5px 10px',fontSize:11},onClick:()=>setEd(x.id)},'Edit'),
+                ce(Btn,{variant:'danger',style:{padding:'5px 10px',fontSize:11},
+                  onClick:()=>setExpenses(ex=>ex.filter(y=>y.id!==x.id))},'Delete')))));
+      }));
+}
+
+// ── Recurring ─────────────────────────────────────────────────────────────────
+function RecPage({recurring,setRecurring,categories,expenses,setExpenses,showToast}){
+  const[show,setShow]=useState(false);
+  const[f,sf]=useState({description:'',amount:'',category:categories[0]||'',notes:'',tags:'',dayOfMonth:'1'});
+  const s=(k,v)=>sf(x=>({...x,[k]:v}));
+  function addR(){
+    if(!f.description.trim()||!f.amount||isNaN(Number(f.amount)))return;
+    setRecurring(r=>[...r,{id:gid(),...f,amount:parseFloat(f.amount),
+      tags:f.tags.split(',').map(t=>t.trim()).filter(Boolean),dayOfMonth:parseInt(f.dayOfMonth)||1}]);
+    sf({description:'',amount:'',category:categories[0]||'',notes:'',tags:'',dayOfMonth:'1'});
+    setShow(false);
+  }
+  function post(r){
+    const d=new Date(NOW.getFullYear(),NOW.getMonth(),Math.min(r.dayOfMonth||1,28));
+    const ds=d.toISOString().slice(0,10),mo=ds.slice(0,7);
+    if(expenses.some(x=>x.recurringId===r.id&&x.month===mo)){showToast('Already posted this month','err');return}
+    setExpenses(x=>[{id:gid(),description:r.description,amount:r.amount,category:r.category,
+      date:ds,notes:r.notes||'',tags:r.tags||[],month:mo,recurringId:r.id},...x]);
+    showToast(r.description+' posted \u2713');
+  }
+  return ce('div',{style:{display:'flex',flexDirection:'column',gap:12}},
+    ce('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+      ce('div',{style:{...DP,fontSize:20,color:TXT}},'Recurring'),
+      ce(Btn,{onClick:()=>setShow(v=>!v),variant:show?'ghost':'primary',style:{padding:'7px 12px',fontSize:12}},show?'Cancel':'+ Add')),
+    show&&ce(Card,null,
+      ce('div',{style:{display:'flex',flexDirection:'column',gap:11}},
+        ce('div',null,ce('label',{style:LBL},'Description'),ce('input',{style:INP,placeholder:'e.g. Rent',value:f.description,onChange:x=>s('description',x.target.value)})),
+        ce('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+          ce('div',null,ce('label',{style:LBL},'Amount'),ce('input',{style:INP,type:'number',inputMode:'decimal',placeholder:'0.00',value:f.amount,onChange:x=>s('amount',x.target.value)})),
+          ce('div',null,ce('label',{style:LBL},'Day of Month'),ce('input',{style:INP,type:'number',min:1,max:28,value:f.dayOfMonth,onChange:x=>s('dayOfMonth',x.target.value)}))),
+        ce('div',null,ce('label',{style:LBL},'Category'),
+          ce('select',{style:INP,value:f.category,onChange:x=>s('category',x.target.value)},
+            categories.map(c=>ce('option',{key:c,style:{background:CARD}},c)))),
+        ce('div',null,ce('label',{style:LBL},'Notes'),ce('input',{style:INP,value:f.notes,onChange:x=>s('notes',x.target.value)})),
+        ce('div',null,ce('label',{style:LBL},'Tags'),ce('input',{style:INP,placeholder:'rent, fixed',value:f.tags,onChange:x=>s('tags',x.target.value)})),
+        ce('div',{style:{display:'flex',justifyContent:'flex-end'}},ce(Btn,{onClick:addR},'Save')))),
+    recurring.length===0&&!show?ce(Card,{style:{textAlign:'center',color:MUT,padding:'2.5rem 1rem'}},'No recurring expenses yet')
+      :recurring.map((r,i)=>{
+        const col=CC[i%CC.length],posted=expenses.some(x=>x.recurringId===r.id&&x.month===CMK);
+        return ce(Card,{key:r.id,style:{padding:'0.85rem'}},
+          ce('div',{style:{display:'flex',gap:9,alignItems:'flex-start'}},
+            ce('div',{style:{width:3,alignSelf:'stretch',background:col,borderRadius:4,flexShrink:0,marginTop:2}}),
+            ce('div',{style:{flex:1}},
+              ce('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline'}},
+                ce('span',{style:{fontWeight:700,fontSize:14,color:TXT}},r.description),
+                ce('span',{style:{...DP,fontSize:16,color:GOLD}},eur(r.amount))),
+              ce('div',{style:{display:'flex',gap:4,marginTop:5,flexWrap:'wrap'}},
+                ce(Tag,{label:r.category,color:col}),
+                ce(Tag,{label:'Day '+r.dayOfMonth,color:MUT})),
+              ce('div',{style:{display:'flex',gap:6,marginTop:9}},
+                ce(Btn,{variant:posted?'success':'ghost',style:{padding:'5px 10px',fontSize:11},
+                  disabled:posted,onClick:()=>!posted&&post(r)},posted?'\u2713 Posted':'Post Now'),
+                ce(Btn,{variant:'danger',style:{padding:'5px 10px',fontSize:11},
+                  onClick:()=>setRecurring(x=>x.filter(y=>y.id!==r.id))},'Delete')))));
+      }));
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+function SettPage({expenses,recurring,categories,setExpenses,setRecurring,setCategories,showToast}){
+  const fr=useRef(null);
+  const[nc,setNc]=useState('');const[conf,setConf]=useState(false);
+  function doExport(){
+    const blob=new Blob([JSON.stringify({version:1,exportedAt:new Date().toISOString(),expenses,recurring,categories},null,2)],{type:'application/json'});
+    const u=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=u;a.download='yg-budget-'+NOW.toISOString().slice(0,10)+'.json';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);
+    showToast('Backup downloaded \u2713');
+  }
+  function doImport(ev){
+    const file=ev.target.files&&ev.target.files[0];if(!file)return;
+    const rd=new FileReader();
+    rd.onload=function(x){try{
+      const d=JSON.parse(x.target.result);
+      if(!d.expenses||!Array.isArray(d.expenses))throw 0;
+      setExpenses(d.expenses);
+      if(d.recurring)setRecurring(d.recurring);
+      if(d.categories)setCategories(d.categories);
+      showToast('Imported '+d.expenses.length+' expenses \u2713');
+    }catch(e){showToast('Import failed \u2014 invalid file','err')}};
+    rd.readAsText(file);ev.target.value='';
+  }
+  function addC(){const t=nc.trim();if(!t||categories.includes(t))return;setCategories(c=>[...c,t]);setNc('')}
+  function clearAll(){
+    setExpenses([]);setRecurring([]);setCategories(DEF);
+    lsSave('yg_e',[]);lsSave('yg_r',[]);lsSave('yg_c',DEF);
+    setConf(false);showToast('All data cleared');
+  }
+  return ce('div',{style:{display:'flex',flexDirection:'column',gap:13,paddingBottom:8}},
+    ce('div',{style:{...DP,fontSize:20,color:TXT}},'Settings'),
+    ce(Card,null,
+      ce('div',{style:{...DP,fontSize:15,color:GOLD,marginBottom:6}},'Backup & Restore'),
+      ce('div',{style:{fontSize:12,color:MUT,marginBottom:13,lineHeight:1.65}},'Export all data as JSON. Re-import anytime to fully restore.'),
+      ce('div',{style:{background:'#1a1713',borderRadius:10,padding:'10px',marginBottom:13,
+          display:'grid',gridTemplateColumns:'1fr 1fr 1fr',textAlign:'center',gap:6}},
+        [['Expenses',expenses.length],['Recurring',recurring.length],['Categories',categories.length]].map(([l,v])=>
+          ce('div',{key:l},ce('div',{style:{...DP,fontSize:20,color:TXT}},v),
+            ce('div',{style:{fontSize:10,color:MUT,textTransform:'uppercase',letterSpacing:'0.08em'}},l)))),
+      ce('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+        ce(Btn,{onClick:doExport,style:{width:'100%',textAlign:'center'}},'\u2193  Export Backup'),
+        ce('input',{ref:fr,type:'file',accept:'.json',style:{display:'none'},onChange:doImport}),
+        ce(Btn,{variant:'ghost',onClick:()=>fr.current&&fr.current.click(),style:{width:'100%',textAlign:'center'}},'\u2191  Import from Backup')),
+      ce('div',{style:{fontSize:10,color:FAINT,marginTop:11,textAlign:'center',lineHeight:1.6}},'Tip: export after each session as a safety net.')),
+    ce(Card,null,
+      ce('div',{style:{...DP,fontSize:15,color:GOLD,marginBottom:11}},'Categories'),
+      ce('div',{style:{display:'flex',gap:8,marginBottom:10}},
+        ce('input',{style:{...INP,flex:1},placeholder:'New category\u2026',value:nc,
+          onChange:x=>setNc(x.target.value),onKeyDown:x=>x.key==='Enter'&&addC()}),
+        ce(Btn,{onClick:addC,style:{padding:'10px 12px',flexShrink:0}},'Add')),
+      ce('div',{style:{display:'flex',flexDirection:'column',gap:6}},
+        categories.map((c,i)=>ce('div',{key:c,style:{display:'flex',alignItems:'center',gap:8,
+            background:'#1a1713',borderRadius:8,padding:'8px 10px'}},
+          ce('span',{style:{width:8,height:8,borderRadius:'50%',background:CC[i%CC.length],flexShrink:0}}),
+          ce('span',{style:{flex:1,fontSize:13,color:TXT}},c),
+          ce('button',{onClick:()=>setCategories(x=>x.filter(y=>y!==c)),
+            style:{background:'none',border:'none',color:MUT,cursor:'pointer',fontSize:18,lineHeight:1,padding:'0 2px'}},'×'))))),
+    ce(Card,{style:{borderColor:RED+'33',marginBottom:8}},
+      ce('div',{style:{...DP,fontSize:15,color:RED,marginBottom:5}},'Danger Zone'),
+      ce('div',{style:{fontSize:12,color:MUT,marginBottom:12,lineHeight:1.65}},'Wipe all expenses and reset everything. Export a backup first!'),
+      !conf?ce(Btn,{variant:'danger',onClick:()=>setConf(true),style:{width:'100%',textAlign:'center'}},'Clear All Data')
+        :ce('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+          ce('div',{style:{fontSize:12,color:RED,textAlign:'center'}},'Are you sure? This cannot be undone.'),
+          ce('div',{style:{display:'flex',gap:8}},
+            ce(Btn,{variant:'ghost',onClick:()=>setConf(false),style:{flex:1,textAlign:'center'}},'Cancel'),
+            ce(Btn,{variant:'danger',onClick:clearAll,style:{flex:1,textAlign:'center'}},'Yes, Clear All')))));
+}
+
+// Mount
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+</script>
+</body>
+</html>
