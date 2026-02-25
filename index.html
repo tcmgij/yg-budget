@@ -167,7 +167,7 @@ const TABS=[{id:'dashboard',icon:'◈',label:'Overview'},
   {id:'add',icon:'+',label:'Add'},
   {id:'expenses',icon:'≡',label:'Expenses'},
   {id:'recurring',icon:'↻',label:'Recurring'},
-  {id:'settings',icon:'⚙',label:'Settings'}];
+  {id:'settings',icon:'settings_svg',label:'Settings'}];
 
 // ── App ───────────────────────────────────────────────────────────────────────
 function App(){
@@ -208,7 +208,11 @@ function App(){
       TABS.map(t=>ce('button',{key:t.id,onClick:()=>setTab(t.id),
         style:{flex:1,padding:'9px 0 11px',background:'none',border:'none',cursor:'pointer',
           display:'flex',flexDirection:'column',alignItems:'center',gap:3}},
-        ce('span',{style:{fontSize:t.id==='add'?20:15,color:tab===t.id?GOLD:FAINT,lineHeight:1}},t.icon),
+        t.icon==='settings_svg'
+          ? ce('svg',{width:15,height:15,viewBox:'0 0 24 24',fill:'none',stroke:tab===t.id?GOLD:FAINT,strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round',style:{display:'block'}},
+              ce('circle',{cx:12,cy:12,r:3}),
+              ce('path',{d:'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'}))
+          : ce('span',{style:{fontSize:15,color:tab===t.id?GOLD:FAINT,lineHeight:1,display:'block',textAlign:'center'}},t.icon),
         ce('span',{style:{fontSize:8,color:tab===t.id?GOLD:MUT,letterSpacing:'0.06em',textTransform:'uppercase'}},t.label)))));
 }
 
