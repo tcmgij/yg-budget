@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="Y&amp;G Budget"/>
 <meta name="theme-color" content="#0D0C0A"/>
+<link rel="apple-touch-icon" href="icon-192.png"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Lato:wght@300;400;700&display=swap"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -184,7 +185,7 @@ function App(){
 
   return ce('div',{style:{minHeight:'100vh',background:BG,color:TXT,paddingBottom:88,maxWidth:430,margin:'0 auto'}},
     // Header
-    ce('div',{style:{padding:'16px 16px 10px',borderBottom:'1px solid '+BDR,position:'sticky',top:0,background:BG,zIndex:50}},
+    ce('div',{style:{padding:'calc(env(safe-area-inset-top) + 52px) 16px 10px',borderBottom:'1px solid '+BDR,position:'sticky',top:0,background:BG,zIndex:50}},
       ce('div',{style:{...DP,fontSize:19,color:GOLD}},'Y&G Budget'),
       ce('div',{style:{fontSize:9,color:MUT,letterSpacing:'0.15em',textTransform:'uppercase',marginTop:1}},'Household Tracker')),
     // Content
@@ -458,10 +459,26 @@ function RecPage({recurring,setRecurring,categories,expenses,setExpenses,showToa
 function SettPage({expenses,recurring,categories,setExpenses,setRecurring,setCategories,showToast}){
   const fr=useRef(null);
   const[nc,setNc]=useState('');const[conf,setConf]=useState(false);
-  function doExport(){
-    const blob=new Blob([JSON.stringify({version:1,exportedAt:new Date().toISOString(),expenses,recurring,categories},null,2)],{type:'application/json'});
+  async function doExport(){
+    const json=JSON.stringify({version:1,exportedAt:new Date().toISOString(),expenses,recurring,categories},null,2);
+    const filename='yg-budget-'+NOW.toISOString().slice(0,10)+'.json';
+    if(window.showSaveFilePicker){
+      try{
+        const fh=await window.showSaveFilePicker({
+          suggestedName:filename,
+          types:[{description:'JSON Backup',accept:{'application/json':['.json']}}]
+        });
+        const w=await fh.createWritable();
+        await w.write(json);await w.close();
+        showToast('Backup saved \u2713');
+        return;
+      }catch(err){
+        if(err.name==='AbortError')return;
+      }
+    }
+    const blob=new Blob([json],{type:'application/json'});
     const u=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=u;a.download='yg-budget-'+NOW.toISOString().slice(0,10)+'.json';
+    a.href=u;a.download=filename;
     document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);
     showToast('Backup downloaded \u2713');
   }
